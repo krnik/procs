@@ -153,21 +153,21 @@ pub struct Opt {
 
 #[cfg_attr(tarpaulin, skip)]
 fn get_config() -> Result<Config, Error> {
-    let dot_cfg_path = directories::BaseDirs::new()
-        .map(|base| base.home_dir().join(".procs.toml"))
-        .filter(|path| path.exists());
-    let app_cfg_path = directories::ProjectDirs::from("com.github", "dalance", "procs")
-        .map(|proj| proj.config_dir().join("config.toml"))
-        .filter(|path| path.exists());
-    let xdg_cfg_path = directories::BaseDirs::new()
-        .map(|base| {
-            base.home_dir()
-                .join(".config")
-                .join("procs")
-                .join("config.toml")
+    use std::env::var;
+    use std::path::Path;
+
+    let xdg_env = var("XDG_CONFIG_HOME").ok();
+    let home_env = var("HOME").ok();
+
+    let cfg_path = xdg_env.as_ref()
+        .or(home_env.as_ref())
+        .map(|cfg_path| Path::new(cfg_path).join("procs").join("config.toml"))
+        .or_else(|| {
+            home_env
+                .as_ref()
+                .map(|cfg| Path::new(cfg).join(".procs.toml"))
         })
         .filter(|path| path.exists());
-    let cfg_path = dot_cfg_path.or(app_cfg_path).or(xdg_cfg_path);
 
     let config: Config = if let Some(path) = cfg_path {
         let mut f = fs::File::open(&path).context(format!("failed to open file ({:?})", path))?;
@@ -176,24 +176,6 @@ fn get_config() -> Result<Config, Error> {
             .context(format!("failed to read file ({:?})", path))?;
         toml::from_str(&s).context(format!("failed to parse toml ({:?})", path))?
     } else {
-        let app_cfg_path = directories::ProjectDirs::from("com.github", "dalance", "procs")
-            .map(|proj| proj.config_dir().join("config.toml"))
-            .unwrap_or_default();
-
-        let err = Term::stderr();
-        let _ = err.write_line(&format!(
-            "{} {}",
-            console::style("note:").yellow().bold(),
-            console::style(format!(
-                "configuration file ({}) is not found",
-                app_cfg_path.to_string_lossy()
-            ))
-            .yellow(),
-        ));
-        let _ = err.write_line(&format!(
-            "      {}",
-            console::style("please see https://github.com/dalance/procs#configuration").yellow(),
-        ));
         toml::from_str(CONFIG_DEFAULT).unwrap()
     };
 
